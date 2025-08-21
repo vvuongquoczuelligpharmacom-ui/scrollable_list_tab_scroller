@@ -249,15 +249,6 @@ class ScrollableListTabScrollerState extends State<ScrollableListTabScroller> {
 
     final renderedMostTopItem = orderedListByPositionIndex.first;
 
-    if (orderedListByPositionIndex.length > 1 &&
-        orderedListByPositionIndex.last.index == widget.itemCount - 1) {
-      // I dont know why it's not perfectly 1.0
-      // 1.01 LGTM
-      const fullBottomEdge = 1.01;
-      if (orderedListByPositionIndex.last.itemTrailingEdge < fullBottomEdge) {
-        return orderedListByPositionIndex.last.index;
-      }
-    }
     if (renderedMostTopItem.getBottomOffset(_currentPositionedListSize) <
         widget.earlyChangePositionOffset) {
       if (orderedListByPositionIndex.length > 1) {
@@ -311,15 +302,26 @@ class ScrollableListTabScrollerState extends State<ScrollableListTabScroller> {
           child: Builder(builder: (context) {
             WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
               final size = context.size;
-              if (size != null) {
+              if (size != null && _currentPositionedListSize != size) {
                 _currentPositionedListSize = size;
+                setState(() {});
               }
             });
             return ScrollsToTop(
               onScrollsToTop: _onScrollsToTop,
               child: ScrollablePositionedList.builder(
-                itemBuilder: (a, b) {
-                  return widget.itemBuilder(a, b);
+                itemBuilder: (a, index) {
+                  // Check the size of the last item and add padding to it in case
+                  // the last item is smaller than the current list size.
+
+                  if ((widget.itemCount - 1) == index) {
+                    return _LastItemWrapper(
+                      child: widget.itemBuilder(a, index),
+                      listHeight: _currentPositionedListSize.height,
+                    );
+                  }
+
+                  return widget.itemBuilder(a, index);
                 },
                 itemCount: widget.itemCount,
                 itemScrollController: itemScrollController,
@@ -464,6 +466,48 @@ class _DefaultHeaderWidgetState extends State<DefaultHeaderWidget>
         splashBorderRadius: widget.tabBarProps.splashBorderRadius,
         tabAlignment: widget.tabBarProps.tabAlignment,
       ),
+    );
+  }
+}
+
+class _LastItemWrapper extends StatefulWidget {
+  const _LastItemWrapper({required this.child, required this.listHeight});
+
+  final Widget child;
+  final double listHeight;
+
+  @override
+  State<_LastItemWrapper> createState() => _LastItemWrapperState();
+}
+
+class _LastItemWrapperState extends State<_LastItemWrapper> {
+  EdgeInsets _additionalPadding = EdgeInsets.zero;
+  Size _lastItemOriginalSize = Size.zero;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: _additionalPadding,
+      child: Builder(builder: (context) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+
+          final size = context.size;
+          if (size != null && _lastItemOriginalSize != size) {
+            _lastItemOriginalSize = size;
+          }
+
+          final gap = widget.listHeight - _lastItemOriginalSize.height;
+          if (gap != _additionalPadding.bottom &&
+              gap > 0 &&
+              _lastItemOriginalSize.height > 0) {
+            _additionalPadding = EdgeInsets.only(bottom: gap);
+            setState(() {});
+          }
+        });
+
+        return widget.child;
+      }),
     );
   }
 }
